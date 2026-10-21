@@ -1,0 +1,3 @@
+Project 5 public n8n workflow templates
+
+The two JSON files omit saved credential references, n8n instance/workflow identifiers and Gmail webhook metadata. The Gmail recipient is recipient@example.com. Import into n8n and configure your own MySQL and Gmail credentials before testing. The SQL nodes expect the nexus_customer_retention database and its tables. The follow-up workflow is inactive on import; review its daily schedule before enabling. Original working exports were not modified.

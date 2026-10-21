@@ -1,0 +1,193 @@
+{
+  "name": "Nexus - Customer Retention Follow-up Monitoring",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "77cf9fc8-55bb-42dd-8f64-aa47c56a3b7a",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\n-- DAY 20 | STEP 5: RETRIEVE OUTSTANDING RETENTION INTERVENTIONS\n\nSELECT\n    Intervention_ID,\n    CustomerID,\n    Intervention_Type,\n    Priority,\n    Status,\n    Assigned_To,\n    Created_At,\n    Notes,\n    TIMESTAMPDIFF(HOUR, Created_At, NOW()) AS Hours_Open\nFROM nexus_customer_retention.retention_interventions\nWHERE Status = 'In Progress'\nORDER BY Created_At ASC;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "7c00c548-bffb-4632-87ae-b95dcc64643b",
+      "name": "Execute a SQL query"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cda732b0-c25a-418e-89b8-a4731538064b",
+              "name": "Follow_Up_Category",
+              "value": "= {{ Number($json.Hours_Open) >= 48 ? 'Escalation Required' : Number($json.Hours_Open) >= 24 ? 'Follow-up Required' : 'Normal' }}   ",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "22c52fae-5213-4711-af9c-16e9ddd20adf",
+      "name": "Classify Retention Follow-up"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0086ee79-f2f3-4294-8bf5-4d937319ee5c",
+              "leftValue": "={{ $json.Follow_Up_Category }}",
+              "rightValue": "Normal",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "321042c2-a955-40af-8fdc-2957bf2a9720",
+      "name": "Check Follow-up Required"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst records = $input.all().map(item => item.json);\n\n// Count interventions by follow-up category\n// trim() removes unwanted spaces\nconst count = category =>\n  records.filter(r =>\n    String(r.Follow_Up_Category ?? '').trim() === category\n  ).length;\n\n// Prepare daily summary\nconst summary = {\n  Report_Date: new Date().toISOString(),\n\n  Total_Interventions: records.length,\n\n  Escalation_Required: count('Escalation Required'),\n\n  Follow_Up_Required: count('Follow-up Required'),\n\n  Normal: count('Normal'),\n\n  High_Priority: records.filter(r =>\n    String(r.Priority ?? '').trim() === 'High'\n  ).length,\n\n  Oldest_Open_Hours: Math.max(\n    0,\n    ...records.map(r => Number(r.Hours_Open) || 0)\n  )\n};\n\n// Email subject\nsummary.Email_Subject =\n  `Nexus Daily Retention Monitoring | ${records.length} Interventions`;\n\n// Email body\nsummary.Email_Body = `\nNEXUS CUSTOMER RETENTION\nDAILY MONITORING REPORT\n\nReport Date: ${summary.Report_Date}\n\nRETENTION SUMMARY\n------------------------------\nTotal Interventions: ${summary.Total_Interventions}\n\nEscalation Required: ${summary.Escalation_Required}\n\nFollow-up Required: ${summary.Follow_Up_Required}\n\nNormal: ${summary.Normal}\n\nHigh Priority: ${summary.High_Priority}\n\nOldest Open Intervention: ${summary.Oldest_Open_Hours} hours\n\n\nACTION REQUIRED\n------------------------------\n1. Prioritise interventions requiring escalation.\n\n2. Review customers requiring follow-up.\n\n3. Contact high-risk customers promptly.\n\n4. Update intervention records after action.\n\n\nThis report was generated automatically\nby the Nexus Customer Retention System.\n`;\n\n// Return one consolidated summary\nreturn [{ json: summary }];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "31f334ba-3a0e-4436-bdbc-2e927728682e",
+      "name": "Prepare Daily Retention Summary"
+    },
+    {
+      "parameters": {
+        "sendTo": "recipient@example.com",
+        "subject": "={{ $json.Email_Subject }}",
+        "emailType": "text",
+        "message": "={{ $json.Email_Body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "2e6ab4d5-f5c9-4f76-b6b8-24eaec900ea6",
+      "name": "Send a message"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Classify Retention Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Retention Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Check Follow-up Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Follow-up Required": {
+      "main": [
+        [
+          {
+            "node": "Prepare Daily Retention Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Daily Retention Summary": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Africa/Lagos",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

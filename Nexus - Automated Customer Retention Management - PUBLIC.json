@@ -1,0 +1,226 @@
+{
+  "name": "Nexus - Automated Customer Retention Management",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0f8adc6b-0213-4242-bbf4-84df51b4530d",
+              "name": "Action_Status",
+              "value": "Ready for Retention Follow-up",
+              "type": "string"
+            },
+            {
+              "id": "a40fee65-b4b8-4eb5-a008-db479cc8785a",
+              "name": "Action_Prepared_At",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "149b4257-8169-4226-9861-ab8588152baf",
+      "name": "Prepare High-Risk Retention Actions"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "31b9e326-592e-4781-bbcf-bc8c8eba60f6",
+      "name": "Manual Retention Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- DAY 18 | STEP 3: RETRIEVE PENDING RETENTION INTERVENTIONS\n\nSELECT\n    i.Intervention_ID,\n    i.CustomerID,\n    i.Intervention_Type,\n    i.Priority,\n    i.Status,\n    c.Churn_Probability_Pct AS Risk_Score,\n    c.Risk_Category\nFROM nexus_customer_retention.retention_interventions AS i\nINNER JOIN nexus_customer_retention.customer_risk_scores AS c\n    ON i.CustomerID = c.CustomerID\nWHERE i.Status = 'Pending'\nORDER BY c.Churn_Probability_Pct DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "50ef9816-c3e5-47cf-801a-1826a1376c9f",
+      "name": "Retrieve Customer Retention Records"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "828bb215-68d6-41c4-b45f-e72d287be48a",
+              "name": "Processing_Status",
+              "value": "Ready for Processing",
+              "type": "string"
+            },
+            {
+              "id": "8aa3ff93-e5af-46aa-a16a-2e0f61645aa0",
+              "name": "Processing_Timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "42e6f58d-4db6-4631-a9fd-a528dce69320",
+      "name": "Prepare Retention Intervention Data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c3c1171e-c97c-4727-901c-6748bb405970",
+              "leftValue": "={{ $json.Risk_Category }}",
+              "rightValue": "High Risk",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "cda65568-2fcf-4349-8741-f7b1c3b9f1f2",
+      "name": "Check High-Risk Customer Eligibility"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "value": "retention_interventions",
+          "mode": "name"
+        },
+        "dataMode": "defineBelow",
+        "columnToMatchOn": "Intervention_ID",
+        "valueToMatchOn": "={{ $json.Intervention_ID }}",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "Status",
+              "value": "In Progress"
+            },
+            {
+              "column": "Assigned_To",
+              "value": "Customer Retention Team"
+            },
+            {
+              "column": "Notes",
+              "value": "High-risk customer identified for priority retention follow-up. Customer Retention Team to review and initiate appropriate intervention."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        1120,
+        -96
+      ],
+      "id": "2e7a691d-5c60-49b8-9e06-8e03b894f012",
+      "name": "Update Customer Retention Records"
+    }
+  ],
+  "connections": {
+    "Prepare High-Risk Retention Actions": {
+      "main": [
+        [
+          {
+            "node": "Update Customer Retention Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Retention Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Retrieve Customer Retention Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Customer Retention Records": {
+      "main": [
+        [
+          {
+            "node": "Prepare Retention Intervention Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Retention Intervention Data": {
+      "main": [
+        [
+          {
+            "node": "Check High-Risk Customer Eligibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check High-Risk Customer Eligibility": {
+      "main": [
+        [
+          {
+            "node": "Prepare High-Risk Retention Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}
